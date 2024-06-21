@@ -97,17 +97,22 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
   @override
   Future<bool> send(List<int> bytes) async {
     try {
-      // final _socket = await Socket.connect(_host, _port, timeout: _timeout);
-      _socket?.add(Uint8List.fromList(bytes));
-      await Future.delayed(Duration(seconds: 1));
-      // await _socket?.flush();
-      // _socket?.destroy();
-      return true;
+      final isConnected = status == TCPStatus.connected;
+      if(!isConnected){
+        return false;
+      }else{
+
+        _socket?.add(Uint8List.fromList(bytes));
+        await Future.delayed(Duration(seconds: 1));
+        return status == TCPStatus.connected;
+      }
     } catch (e) {
       _socket?.destroy();
       return false;
     }
   }
+
+
 
   @override
   Future<bool> connect(TcpPrinterInput model) async {
@@ -115,7 +120,7 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
       if (status == TCPStatus.none) {
         _socket = await Socket.connect(model.ipAddress, model.port, timeout: model.timeout);
         status = TCPStatus.connected;
-        debugPrint('socket connected'); //if opened you will get it here
+        debugPrint('socket $status'); //if opened you will get it here
         _statusStreamController.add(status);
 
         // Create ping object with desired args
@@ -132,13 +137,12 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
         });
         listenSocket(ping);
       }
-      return true;
     } catch (e) {
       _socket?.destroy();
       status = TCPStatus.none;
       _statusStreamController.add(status);
-      return false;
     }
+    return status == TCPStatus.connected;
   }
 
   /// [delayMs]: milliseconds to wait after destroying the socket
