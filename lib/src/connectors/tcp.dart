@@ -103,7 +103,6 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
       }else{
 
         _socket?.add(Uint8List.fromList(bytes));
-        await Future.delayed(Duration(seconds: 1));
         return status == TCPStatus.connected;
       }
     } catch (e) {
