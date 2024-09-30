@@ -39,6 +39,7 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
 
   Stream<TCPStatus> get _statusStream => _statusStreamController.stream;
   final StreamController<TCPStatus> _statusStreamController = StreamController.broadcast();
+  final StreamController<PrinterState> _printerStateStreamController = StreamController.broadcast();
 
   static Future<List<PrinterDiscovered<TcpPrinterInfo>>> discoverPrinters({String? ipAddress, int? port, Duration? timeOut}) async {
     final List<PrinterDiscovered<TcpPrinterInfo>> result = [];
@@ -101,15 +102,47 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
       if(!isConnected){
         return false;
       }else{
-
+        _printerStateStreamController.add(PrinterState.printing);
         _socket?.add(Uint8List.fromList(bytes));
-        return status == TCPStatus.connected;
+        // Now send the status command to check if the printer has finished printing (DLE EOT 1)
+        List<int> statusCommand = [16, 4, 1]; // DLE EOT 1 (check printer status)
+        _socket?.add(Uint8List.fromList(statusCommand));
+         // Wait for the printer to finish printing by listening for the status update
+        return await _waitForPrinterFinished();
       }
     } catch (e) {
       _socket?.destroy();
       return false;
     }
   }
+
+
+  Future<bool> _waitForPrinterFinished() async {
+  // Completer to await for the printer state
+    final completer = Completer<bool>();
+
+    // Listen to the printer state updates
+    final subscription = _printerStateStreamController.stream.listen((state) {
+      if (state == PrinterState.finished) {
+        completer.complete(true);  // Print finished
+      } else if (state == PrinterState.none || state == PrinterState.error) {
+        completer.complete(false); // Something went wrong or no response
+      }
+    });
+
+    // Timeout mechanism in case the printer takes too long
+    final timeout = Future.delayed(Duration(seconds: 10), () {
+      completer.complete(false);  // Timed out waiting for print completion
+    });
+
+    // Wait for either the printer to finish or timeout
+    final result = await Future.any([completer.future, timeout]);
+
+    // Clean up the subscription
+    await subscription.cancel();
+
+  return result;
+}
 
 
 
@@ -168,15 +201,26 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
     yield* _statusStream.cast<TCPStatus>();
   }
 
+  Stream<PrinterState> get printerState async* {
+    yield* _printerStateStreamController.stream.cast<PrinterState>();
+  }
+
   void listenSocket(Ping ping) {
     _socket?.listen(
       (dynamic message) {
         debugPrint('message $message');
+        int status = message[0];
+        if ((status & 0x08) == 0x08) {
+          _printerStateStreamController.add(PrinterState.printing);
+        }else{
+          _printerStateStreamController.add(PrinterState.finished);
+        }
       },
       onDone: () {
         status = TCPStatus.none;
         debugPrint('socket closed'); //if closed you will get it here
         _socket?.destroy();
+        _printerStateStreamController.add(PrinterState.stopped);
         ping.stop();
         _statusStreamController.add(status);
       },
@@ -185,6 +229,7 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
         debugPrint('socket error $error');
         _socket?.destroy();
         ping.stop();
+        _printerStateStreamController.add(PrinterState.error);
         _statusStreamController.add(status);
       },
     );
