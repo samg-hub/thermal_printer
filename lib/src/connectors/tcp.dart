@@ -108,7 +108,8 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
         List<int> statusCommand = [16, 4, 1]; // DLE EOT 1 (check printer status)
         _socket?.add(Uint8List.fromList(statusCommand));
          // Wait for the printer to finish printing by listening for the status update
-        return await _waitForPrinterFinished();
+        final result = await _waitForPrinterFinished();
+        return result ?? false;
       }
     } catch (e) {
       _socket?.destroy();
@@ -117,7 +118,7 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
   }
 
 
-  Future<bool> _waitForPrinterFinished() async {
+  Future<bool?> _waitForPrinterFinished() async {
   // Completer to await for the printer state
     final completer = Completer<bool>();
 
