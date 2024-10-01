@@ -36,12 +36,14 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
   TcpPrinterConnector();
   Socket? _socket;
   TCPStatus status = TCPStatus.none;
+  PrinterState printerState = PrinterState.none;
 
   Stream<TCPStatus> get _statusStream => _statusStreamController.stream;
   final StreamController<TCPStatus> _statusStreamController = StreamController.broadcast();
   final StreamController<PrinterState> _printerStateStreamController = StreamController.broadcast();
 
-  static Future<List<PrinterDiscovered<TcpPrinterInfo>>> discoverPrinters({String? ipAddress, int? port, Duration? timeOut}) async {
+  static Future<List<PrinterDiscovered<TcpPrinterInfo>>> discoverPrinters(
+      {String? ipAddress, int? port, Duration? timeOut}) async {
     final List<PrinterDiscovered<TcpPrinterInfo>> result = [];
     final defaultPort = port ?? 9100;
 
@@ -62,7 +64,8 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
 
     await for (var addr in stream) {
       if (addr.exists) {
-        result.add(PrinterDiscovered<TcpPrinterInfo>(name: "${addr.ip}:$defaultPort", detail: TcpPrinterInfo(address: addr.ip)));
+        result.add(PrinterDiscovered<TcpPrinterInfo>(
+            name: "${addr.ip}:$defaultPort", detail: TcpPrinterInfo(address: addr.ip)));
       }
     }
 
@@ -99,41 +102,38 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
   Future<bool> send(List<int> bytes) async {
     try {
       final isConnected = status == TCPStatus.connected;
-      if(!isConnected){
+      if (!isConnected) {
         return false;
-      }else{
+      } else {
         _printerStateStreamController.add(PrinterState.printing);
         _socket?.add(Uint8List.fromList(bytes));
         // Now send the status command to check if the printer has finished printing (DLE EOT 1)
         List<int> statusCommand = [16, 4, 1]; // DLE EOT 1 (check printer status)
         _socket?.add(Uint8List.fromList(statusCommand));
-         // Wait for the printer to finish printing by listening for the status update
-        final result = await _waitForPrinterFinished();
-        return result ?? false;
+        // Wait for the printer to finish printing by listening for the status update
+        await _waitForPrinterFinished();
+        final isFinished = printerState == PrinterState.finished;
+        return isFinished;
       }
     } catch (e) {
+      _printerStateStreamController.add(PrinterState.error);
       _socket?.destroy();
       return false;
     }
   }
 
-
   Future<bool?> _waitForPrinterFinished() async {
-  // Completer to await for the printer state
+    // Completer to await for the printer state
     final completer = Completer<bool>();
 
     // Listen to the printer state updates
     final subscription = _printerStateStreamController.stream.listen((state) {
-      if (state == PrinterState.finished) {
-        completer.complete(true);  // Print finished
-      } else if (state == PrinterState.none || state == PrinterState.error) {
-        completer.complete(false); // Something went wrong or no response
-      }
+      printerState = state;
     });
 
     // Timeout mechanism in case the printer takes too long
     final timeout = Future.delayed(Duration(seconds: 10), () {
-      completer.complete(false);  // Timed out waiting for print completion
+      printerState = PrinterState.error;
     });
 
     // Wait for either the printer to finish or timeout
@@ -142,15 +142,15 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
     // Clean up the subscription
     await subscription.cancel();
 
-  return result;
-}
-
-
+    return result;
+  }
 
   @override
   Future<bool> connect(TcpPrinterInput model) async {
     try {
-      if (status == TCPStatus.none) {
+      final isBlankPrinterState = printerState == PrinterState.none;
+      final isErrorPrinterState = printerState == PrinterState.error;
+      if (status == TCPStatus.none && (isBlankPrinterState || isErrorPrinterState)) {
         _socket = await Socket.connect(model.ipAddress, model.port, timeout: model.timeout);
         status = TCPStatus.connected;
         debugPrint('socket $status'); //if opened you will get it here
@@ -166,6 +166,8 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
             _socket?.destroy();
             status = TCPStatus.none;
             _statusStreamController.add(status);
+            printerState = PrinterState.none;
+            _printerStateStreamController.add(printerState);
           }
         });
         listenSocket(ping);
@@ -188,11 +190,13 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
       if (delayMs != null) {
         await Future.delayed(Duration(milliseconds: delayMs), () => null);
       }
+      _printerStateStreamController.add(PrinterState.none);
       return true;
     } catch (e) {
       _socket?.destroy();
       status = TCPStatus.none;
       _statusStreamController.add(status);
+      _printerStateStreamController.add(PrinterState.error);
       return false;
     }
   }
@@ -202,26 +206,24 @@ class TcpPrinterConnector implements PrinterConnector<TcpPrinterInput> {
     yield* _statusStream.cast<TCPStatus>();
   }
 
-  Stream<PrinterState> get printerState async* {
-    yield* _printerStateStreamController.stream.cast<PrinterState>();
-  }
-
   void listenSocket(Ping ping) {
     _socket?.listen(
       (dynamic message) {
-        debugPrint('message $message');
         int status = message[0];
         if ((status & 0x08) == 0x08) {
           _printerStateStreamController.add(PrinterState.printing);
-        }else{
+          debugPrint('Printer Printing');
+        }
+        if ((status & 0x08) == 0) {
           _printerStateStreamController.add(PrinterState.finished);
+          debugPrint('Printer Finished');
         }
       },
       onDone: () {
         status = TCPStatus.none;
         debugPrint('socket closed'); //if closed you will get it here
         _socket?.destroy();
-        _printerStateStreamController.add(PrinterState.stopped);
+        _printerStateStreamController.add(PrinterState.none);
         ping.stop();
         _statusStreamController.add(status);
       },
