@@ -203,7 +203,7 @@ class BluetoothConnection constructor(handler: Handler) : IBluetoothConnection {
         // Send a failure message back to the Activity
         val msg = mHandler.obtainMessage(BluetoothConstants.MESSAGE_TOAST)
         val bundle = Bundle()
-        bundle.putInt(TOAST, R.string.lost_connection_bt)
+        // bundle.putInt(TOAST, R.string.lost_connection_bt)
         msg.data = bundle
         mHandler.sendMessage(msg)
         state = BluetoothConstants.STATE_NONE
@@ -312,7 +312,7 @@ class BluetoothConnection constructor(handler: Handler) : IBluetoothConnection {
                     mmInStream?.read(mmBuffer) ?: 0
                 } catch (e: IOException) {
 //                    Log.d(TAG, "Input stream was disconnected", e)
-                    state = BluetoothConstants.STATE_NONE
+                    connectionLost()
                     break
                 }
                 // Send the obtained bytes to the UI Activity
