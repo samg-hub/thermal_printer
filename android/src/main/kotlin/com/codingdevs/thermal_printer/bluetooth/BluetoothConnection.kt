@@ -200,9 +200,6 @@ class BluetoothConnection constructor(handler: Handler) : IBluetoothConnection {
      * Indicate that the connection was lost and notify the UI Activity.
      */
     private fun connectionLost() {
-        // Send a failure message back to the Activity
-        val msg = mHandler.obtainMessage(BluetoothConstants.MESSAGE_TOAST)
-        mHandler.sendMessage(msg)
         state = BluetoothConstants.STATE_NONE
     }
 
