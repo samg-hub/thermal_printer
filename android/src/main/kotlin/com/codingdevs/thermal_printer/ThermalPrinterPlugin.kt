@@ -137,7 +137,16 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
                 BluetoothConstants.MESSAGE_TOAST -> {
                     val bundle = msg.data
                     bundle?.getInt(BluetoothConnection.TOAST)?.let {
-                        Toast.makeText(context, context!!.getString(it), Toast.LENGTH_SHORT).show()
+                        if (context != null) {
+                            try {
+                                Toast.makeText(context, context!!.getString(it), Toast.LENGTH_SHORT).show()
+                            } catch (e: NotFoundException) {
+                                // no-op
+                                // this situation can happen when using this lib to print on bluetooth device,
+                                // then switch to other lib to print on the same bluetooth device
+                            }
+
+                        }
                     }
                 }
                 BluetoothConstants.MESSAGE_START_SCANNING -> {
