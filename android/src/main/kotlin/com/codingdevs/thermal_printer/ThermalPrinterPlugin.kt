@@ -140,7 +140,7 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
                         if (context != null) {
                             try {
                                 Toast.makeText(context, context!!.getString(it), Toast.LENGTH_SHORT).show()
-                            } catch (e: NotFoundException) {
+                            } catch (e: Exception) {
                                 // no-op
                                 // this situation can happen when using this lib to print on bluetooth device,
                                 // then switch to other lib to print on the same bluetooth device
