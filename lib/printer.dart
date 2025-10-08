@@ -12,6 +12,8 @@ enum USBStatus { none, connecting, connected }
 
 enum TCPStatus { none, connected }
 
+enum PrinterState { none, printing, finished, error }
+
 abstract class Printer {
   Future<bool> image(Uint8List image, {int threshold = 150});
   Future<bool> beep();
