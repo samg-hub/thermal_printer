@@ -173,8 +173,12 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
         messageChannel = null
         messageUSBChannel = null
 
-        bluetoothService.setHandler(null)
-        adapter.setHandler(null)
+        if (::bluetoothService.isInitialized) {
+            bluetoothService.setHandler(null)
+        }
+        if (::adapter.isInitialized) {
+            adapter.setHandler(null)
+        }
     }
 
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
