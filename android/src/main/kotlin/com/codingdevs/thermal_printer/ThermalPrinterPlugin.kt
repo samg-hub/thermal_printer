@@ -222,7 +222,7 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
             call.method.equals("getBluetoothList") -> {
                 isBle = false
                 isScan = true
-                if (verifyIsBluetoothIsOn()) {
+                if (verifyIsBluetoothIsOn() && ::bluetoothService.isInitialized) {
                     bluetoothService.cleanHandlerBtBle()
                     bluetoothService.scanBluDevice(channel)
                     result.success(null)
@@ -231,7 +231,7 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
             call.method.equals("getBluetoothLeList") -> {
                 isBle = true
                 isScan = true
-                if (verifyIsBluetoothIsOn()) {
+                if (verifyIsBluetoothIsOn() && ::bluetoothService.isInitialized) {
                     bluetoothService.scanBleDevice(channel)
                     result.success(null)
                 }
@@ -241,7 +241,7 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
                 val address: String? = call.argument("address")
                 val isBle: Boolean? = call.argument("isBle")
                 val autoConnect: Boolean = if (call.hasArgument("autoConnect")) call.argument("autoConnect")!! else false
-                if (verifyIsBluetoothIsOn()) {
+                if (verifyIsBluetoothIsOn() && ::bluetoothService.isInitialized) {
                     bluetoothService.setHandler(bluetoothHandler)
                     bluetoothService.onStartConnection(context!!, address!!, result, isBle = isBle!!, autoConnect = autoConnect)
                 } else {
@@ -251,9 +251,13 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
 
             call.method.equals("disconnect") -> {
                 try {
-                    bluetoothService.setHandler(bluetoothHandler)
-                    bluetoothService.bluetoothDisconnect()
-                    result.success(true)
+                    if (::bluetoothService.isInitialized) {
+                        bluetoothService.setHandler(bluetoothHandler)
+                        bluetoothService.bluetoothDisconnect()
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
                 } catch (e: Exception) {
                     result.success(false)
                 }
@@ -261,7 +265,7 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
             }
 
             call.method.equals("sendDataByte") -> {
-                if (verifyIsBluetoothIsOn()) {
+                if (verifyIsBluetoothIsOn() && ::bluetoothService.isInitialized) {
                     bluetoothService.setHandler(bluetoothHandler)
                     val listInt: ArrayList<Int>? = call.argument("bytes")
                     val ints = listInt!!.toIntArray()
@@ -273,7 +277,7 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
                 }
             }
             call.method.equals("sendText") -> {
-                if (verifyIsBluetoothIsOn()) {
+                if (verifyIsBluetoothIsOn() && ::bluetoothService.isInitialized) {
                     val text: String? = call.argument("text")
                     bluetoothService.sendData(text!!)
                     result.success(true)
@@ -282,7 +286,9 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
                 }
             }
             call.method.equals("getList") -> {
-                bluetoothService.cleanHandlerBtBle()
+                if (::bluetoothService.isInitialized) {
+                    bluetoothService.cleanHandlerBtBle()
+                }
                 getUSBDeviceList(result)
             }
             call.method.equals("connectPrinter") -> {
@@ -317,7 +323,7 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
 
     private fun verifyIsBluetoothIsOn(): Boolean {
         if (checkPermissions()) {
-            if (!bluetoothService.mBluetoothAdapter.isEnabled) {
+            if (::bluetoothService.isInitialized && !bluetoothService.mBluetoothAdapter.isEnabled) {
                 if (requestPermissionBT) return false
                 val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
                 currentActivity?.let { startActivityForResult(it, enableBtIntent, PERMISSION_ENABLE_BLUETOOTH, null) }
@@ -416,24 +422,32 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
         currentActivity = binding.activity
         binding.addRequestPermissionsResultListener(this)
         binding.addActivityResultListener(this)
-        bluetoothService.setActivity(currentActivity)
+        if (::bluetoothService.isInitialized) {
+            bluetoothService.setActivity(currentActivity)
+        }
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
         currentActivity = null
-        bluetoothService.setActivity(null)
+        if (::bluetoothService.isInitialized) {
+            bluetoothService.setActivity(null)
+        }
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         currentActivity = binding.activity
         binding.addRequestPermissionsResultListener(this)
         binding.addActivityResultListener(this)
-        bluetoothService.setActivity(currentActivity)
+        if (::bluetoothService.isInitialized) {
+            bluetoothService.setActivity(currentActivity)
+        }
     }
 
     override fun onDetachedFromActivity() {
         currentActivity = null
-        bluetoothService.setActivity(null)
+        if (::bluetoothService.isInitialized) {
+            bluetoothService.setActivity(null)
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
@@ -443,7 +457,7 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
 
                 Log.d(TAG, "PERMISSION_ENABLE_BLUETOOTH PERMISSION_GRANTED resultCode $resultCode")
                 if (resultCode == Activity.RESULT_OK)
-                    if (isScan)
+                    if (isScan && ::bluetoothService.isInitialized)
                         if (isBle) bluetoothService.scanBleDevice(channel) else bluetoothService.scanBluDevice(channel)
 
             }
@@ -468,7 +482,7 @@ class ThermalPrinterPlugin : FlutterPlugin, MethodCallHandler, PluginRegistry.Re
                 if (!grant) {
                     Toast.makeText(context, R.string.not_permissions, Toast.LENGTH_LONG).show()
                 } else {
-                    if (verifyIsBluetoothIsOn() && isScan)
+                    if (verifyIsBluetoothIsOn() && isScan && ::bluetoothService.isInitialized)
                         if (isBle) bluetoothService.scanBleDevice(channel) else bluetoothService.scanBluDevice(channel)
                 }
                 return true
